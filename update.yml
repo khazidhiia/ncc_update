@@ -1,0 +1,87 @@
+- hosts: all
+  name: Update RPM-s
+  remote_user: root
+  vars:
+    version: "2022_R1"
+    release: "3"
+#------------------------------------
+    workdir: "$HOME"
+    update_folder: "{{ ansible_date_time }}"
+    services_running: ['nova-chatproxy-genesys-pureengage-complexsolutions.service', 'nova-chatproxy-genesys-pureengage-ccr.service', 'nova-chatproxy-genesys-pureengage.service', 'nova-chatproxy-genesys-pureengage-gdemo.service', 'nova-chatproxy-genesys-pureengage-deploy-chain.service']
+#------------------------------------
+    #Storages
+    storage: "u192274-sub1.your-backup.de"
+    sftpuser: "u192274-sub1"
+    sftppass: "SnMCLq4zpkK5zWTE"
+#------------------------------------
+    #List of Buils Projects
+    builds_list:
+    - name: nova-botconnector
+      git_name: nova.botconnector
+    - name: nova-botflow
+      git_name: "nova.botflow"
+    - name: nova-chatrouter
+      git_name: "nova.chatrouter"
+    - name: nova-chatproxy-genesys-pureconnect
+      git_name: "nova.chatproxy.genesys.pureconnect.icws"
+    - name: nova-chatproxy-genesys-pureengage
+      git_name: "nova.chatproxy.genesys.pureengage"
+    - name: nova-chatproxy-genesys-purecloud
+      git_name: "nova.chatproxy.genesys.purecloud"
+    - name: nova-chatproxy-cisco-ece
+      git_name: "nova.chatproxy.cisco.ece"
+#------------------------------------
+
+#    services_NOT_running: []
+
+  tasks:
+  
+  - name: Check Target Folder
+    stat: 
+       path: "{{ workdir }}/{{ ansible_date_time.date }}"
+    register: target_path
+
+  - name: Make Dir
+    file: 
+       path: "{{ workdir }}/{{ ansible_date_time.date }}/{{ item.name }}"
+
+       state: directory
+    loop: "{{ builds_list }}"
+    when: target_path.stat.isdir is not defined
+  
+  - name: Download RPM-s
+    shell: "curl -k sftp://{{ storage }}/{{ item.git_name }}/{{ item.name }}-{{ version }}-{{ release }}.x86_64.rpm --user {{ sftpuser }}:{{ sftppass }} -o {{ workdir }}/{{ ansible_date_time.date }}/{{ item.name }}/{{ item.name }}-{{ version }}-{{ release }}.x86_64.rpm"
+    loop: "{{ builds_list }}"
+
+
+  - name: populate service facts
+    service_facts:
+
+
+
+  # - name: populate running services
+  #   set_fact:
+  #     services_running: "{{ services_running + [item] }}"
+  #   when:      
+  #     - hostvars[inventory_hostname]['services']['{{item}}']['name'] | regex_search("nova-chatproxy-genesys-pureengage(.*)")
+  #     - hostvars[inventory_hostname]['services']['{{item}}']['state'] == "running"
+
+  #   with_items: "{{ hostvars[inventory_hostname]['services'].keys() }}"
+
+#  - name: populate NOT running services
+#    set_fact:
+#      services_NOT_running: "{{ services_NOT_running + [item] }}"
+#    when: hostvars[inventory_hostname]['services']['{{item}}']['state'] != "running"
+#    with_items: "{{ hostvars[inventory_hostname]['services'].keys() }}"
+
+  - debug:
+      msg: "running services at {{ update_folder.date }} : {{ services_running }}"
+
+#  - name: Stop Services
+#    systemd:
+#        name: "{{ item }}"
+#        state: stopped
+#    loop: "{{ services_running }}"
+
+#  - debug:
+#      msg: "NOT running services: {{ services_NOT_running }}"
