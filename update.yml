@@ -3,7 +3,7 @@
   remote_user: root
   vars:
     version: "2022_R1"
-    release: "3"
+    release: "4"
 #------------------------------------
     workdir: "$HOME"
     update_folder: "{{ ansible_date_time }}"
@@ -35,7 +35,7 @@
 #    services_NOT_running: []
 
   tasks:
-  
+
   - name: Check Target Folder
     stat: 
        path: "{{ workdir }}/{{ ansible_date_time.date }}"
@@ -52,36 +52,47 @@
   - name: Download RPM-s
     shell: "curl -k sftp://{{ storage }}/{{ item.git_name }}/{{ item.name }}-{{ version }}-{{ release }}.x86_64.rpm --user {{ sftpuser }}:{{ sftppass }} -o {{ workdir }}/{{ ansible_date_time.date }}/{{ item.name }}/{{ item.name }}-{{ version }}-{{ release }}.x86_64.rpm"
     loop: "{{ builds_list }}"
-
+    when: target_path.stat.isdir is not defined
 
   - name: populate service facts
     service_facts:
 
+  # - debug:
+  #     msg: "{{ansible_facts.services.values()}}"
+
+  # - debug:
+  #     msg: "{{item.name}}"
+  #   with_items: "{{ansible_facts.services.values()}}"
 
 
-  # - name: populate running services
-  #   set_fact:
-  #     services_running: "{{ services_running + [item] }}"
-  #   when:      
-  #     - hostvars[inventory_hostname]['services']['{{item}}']['name'] | regex_search("nova-chatproxy-genesys-pureengage(.*)")
-  #     - hostvars[inventory_hostname]['services']['{{item}}']['state'] == "running"
+  - name: gather running services
+    set_fact:
+      services_running_collect: "{{  services_running_collect | default({}) | combine ( {item.name : item.status})  }}"
+    when:
+      # - item.name == "nginx.service"
+      # - item.name | regex_search("nova-chatproxy-genesys-pureengage(.*)")
+      - item.name | regex_search("nova-(.*)")
+      - item.state == "running"
+      - item.status == "enabled"
+    with_items: "{{ ansible_facts.services.values() }}"
 
-  #   with_items: "{{ hostvars[inventory_hostname]['services'].keys() }}"
 
-#  - name: populate NOT running services
-#    set_fact:
-#      services_NOT_running: "{{ services_NOT_running + [item] }}"
-#    when: hostvars[inventory_hostname]['services']['{{item}}']['state'] != "running"
-#    with_items: "{{ hostvars[inventory_hostname]['services'].keys() }}"
+  - name: Stop Services
+    systemd:
+      name: "{{ item }}"
+      state: stopped
+    with_items: "{{ services_running_collect.keys() }}"
 
-  - debug:
-      msg: "running services at {{ update_folder.date }} : {{ services_running }}"
+  - name: Install package
+    shell: "rpm -U {{ workdir }}/{{ ansible_date_time.date }}/{{ item.name }}/{{ item.name }}-{{ version }}-{{ release }}.x86_64.rpm"
+    loop: "{{ builds_list }}"
 
-#  - name: Stop Services
-#    systemd:
-#        name: "{{ item }}"
-#        state: stopped
-#    loop: "{{ services_running }}"
+  - name: Start Services
+    systemd:
+      name: "{{ item }}"
+      state: started
+    with_items: "{{ services_running_collect.keys() }}"
 
-#  - debug:
-#      msg: "NOT running services: {{ services_NOT_running }}"
+  # - name: Processed Services
+  #   debug:
+  #     msg: "{{ services_running_collect }}"
